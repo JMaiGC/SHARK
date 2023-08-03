@@ -179,7 +179,7 @@ class VicunaBase(SharkLLMBase):
         print(f"[DEBIG] output_name = {output_name}")
         maps1 = []
         maps2 = []
-        constants = set()
+        constants = set() 
         f1 = []
         f2 = []
 
@@ -240,6 +240,7 @@ class VicunaBase(SharkLLMBase):
 
         global_vars = []
         vnames = []
+        duplicates = []
         global_var_loading1 = []
         global_var_loading2 = []
 
@@ -251,6 +252,11 @@ class VicunaBase(SharkLLMBase):
             vname, vbody = constant.split("=")
             vname = re.sub("%", "", vname)
             vname = vname.strip()
+            if vname in vnames:
+                duplicates.append(vname)
+                vname = vname+"_1"
+            else:
+                vnames.append(vname)
             vbody = re.sub("arith.constant", "", vbody)
             vbody = vbody.strip()
             if len(vbody.split(":")) < 2:
@@ -264,7 +270,6 @@ class VicunaBase(SharkLLMBase):
                 counter = 0
                 print("detected duplicate")
                 continue
-            vnames.append(vname)
             if "true" not in vname:
                 global_vars.append(
                     f"ml_program.global public @{vname}({vbody}) : {fixed_vdtype}"
@@ -311,6 +316,11 @@ class VicunaBase(SharkLLMBase):
                 if "c20_i64 = arith.addi %dim_i64, %c1_i64 : i64" in line:
                     new_f2.append("%" + line)
                 else:
+                    for word in line.split(" "):
+                        if word in duplicates:
+                            print(line)
+                            line = re.sub(word, word+"_1", line)
+
                     new_f2.append(line)
 
         f1 = new_f1
@@ -1286,6 +1296,7 @@ class UnshardedVicuna(VicunaBase):
                         str(first_module), dynamic_input_size=19
                     )
                     if self.cache_vicunas:
+                        print(f"[DEBUG] saving first vicuna to first_{self.precision}.mlir")
                         with open(f"first_{self.precision}.mlir", "w+") as f:
                             f.write(first_module)
 
@@ -1372,6 +1383,7 @@ class UnshardedVicuna(VicunaBase):
                         str(second_module)
                     )
                     if self.cache_vicunas:
+                        print(f"[DEBUG] saving second vicuna to second_{self.precision}.mlir")
                         with open(f"second_{self.precision}.mlir", "w+") as f:
                             f.write(second_module)
 
