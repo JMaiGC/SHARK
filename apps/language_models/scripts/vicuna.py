@@ -494,6 +494,7 @@ class ShardedVicuna(VicunaBase):
         new_lines = []
         for line in module.splitlines():
             line = re.sub(f"{dynamic_input_size}x", "?x", line)
+            line = re.sub(f"1x\?x", "16x?x", line)
             if "?x" in line:
                 line = re.sub("tensor.empty\(\)", "tensor.empty(%dim)", line)
             line = re.sub(f" {dynamic_input_size},", " %dim,", line)
@@ -503,6 +504,9 @@ class ShardedVicuna(VicunaBase):
                 )
             if "arith.cmpi" in line:
                 line = re.sub(f"c{dynamic_input_size}", "dim", line)
+            if "1x?x" in line:
+                line = re.sub("1x?x", "16x?x", line)
+                print(line)
             new_lines.append(line)
         new_module = "\n".join(new_lines)
         return new_module
@@ -514,13 +518,14 @@ class ShardedVicuna(VicunaBase):
                 continue
             if f"%c{dynamic_input_size}_i64 =" in line:
                 new_lines.append(
-                    "%dim_42 = tensor.dim %arg1, %c3 : tensor<1x1x1x?xf32>"
+                    "%dim_42 = tensor.dim %arg1, %c3 : tensor<16x1x1x?xf32>"
                 )
                 new_lines.append(
                     f"%dim_42_i64 = arith.index_cast %dim_42 : index to i64"
                 )
                 continue
             line = re.sub(f"{dynamic_input_size}x", "?x", line)
+            line = re.sub(f"1x\?x", "16x?x", line)
             line = re.sub(f"%c{dynamic_input_size}_i64", "%dim_42_i64", line)
             if "?x" in line:
                 line = re.sub(
@@ -535,6 +540,9 @@ class ShardedVicuna(VicunaBase):
                 )
             if "arith.cmpi" in line:
                 line = re.sub(f"c{dynamic_input_size}", "dim_42", line)
+            if "1x?x" in line:
+                line = re.sub("1x?x", "16x?x", line)
+                print(line)
             new_lines.append(line)
         new_module = "\n".join(new_lines)
         return new_module
@@ -1442,6 +1450,7 @@ class UnshardedVicuna(VicunaBase):
                     compilation_input_ids = torch.tensor(
                         compilation_input_ids
                     ).reshape([1, 19])
+                    compilation_input_ids = torch.cat([compilation_input_ids for x in range(16)], axis=0)
                     firstVicunaCompileInput = (compilation_input_ids,)
                     model = FirstVicuna(
                         self.hf_model_path,
@@ -1521,10 +1530,10 @@ class UnshardedVicuna(VicunaBase):
                 else:
                     # generate second vicuna
                     compilation_input_ids = torch.zeros(
-                        [1, 1], dtype=torch.int64
+                        [16, 1], dtype=torch.int64
                     )
                     pkv = tuple(
-                        (torch.zeros([1, 32, 19, 128], dtype=torch.float32))
+                        (torch.zeros([16, 32, 19, 128], dtype=torch.float32))
                         for _ in range(64)
                     )
                     secondVicunaCompileInput = (compilation_input_ids,) + pkv
